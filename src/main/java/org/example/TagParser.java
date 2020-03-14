@@ -1,144 +1,178 @@
 package org.example;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.regex.Pattern;
 
 public class TagParser {
-    private List<String> getTaggedContent(String string,List<String> resultText){
 
-        if (string.length() > 0 && hasTags(string)){
-            String tagString = lookupNextTag(string);
-            if (isTagValid(string,tagString)){
-                String beginTag = buildBeginTagFrom(tagString);
-                String enclosingTag = buildEnclosingTagFrom(tagString);
-                String taggedText = getTaggedText(string,beginTag,enclosingTag);
-                if (hasTags(taggedText)){
-                    resultText = getTaggedContent(taggedText,resultText);
-                } else if (taggedText.length() > 0){
-                    resultText.add(taggedText);
+    public List<String> parseTaggedTextFrom(String textLine) {
+        List<String> parsedText = getTaggedContent(textLine);
+
+        if (parsedText.isEmpty()) {
+            parsedText.add("None");
+        }
+
+        return parsedText;
+    }
+
+    private List<String> getTaggedContent(String string) {
+        return getTaggedContent(string, new ArrayList<>());
+    }
+
+    private List<String> getTaggedContent(String string, List<String> resultText) {
+        if (string.length() > 0 && hasTags(string)) {
+
+            Tag tag = lookupNextTag(string);
+
+            if (isTagValid(string, tag)) {
+                String parsedText = getTaggedText(string, tag);
+
+                if (hasTags(parsedText)) {
+                    resultText = getTaggedContent(parsedText, resultText);
+                } else if (parsedText.length() > 0) {
+                    resultText.add(parsedText);
                 }
 
-                string = deleteParsedContent(string,beginTag + taggedText + enclosingTag);
+                string = removeParsedTextFrom(string, tag.tagText(parsedText));
+
             } else {
-                string = dropInvalidTag(string,tagString);
+                string = dropInvalidTag(string, tag);
             }
+
         } else {
             return resultText;
         }
 
-        return getTaggedContent(string,resultText);
+        return getTaggedContent(string, resultText);
     }
 
-    private List<String> getTaggedContent(String content){
-        return getTaggedContent(content,new ArrayList<>());
+    private String getTaggedText(String content, Tag tag) {
+        String beginTag = tag.begin();
+        String enclosingTag = tag.enclosing();
+
+        int beginIndex = content.indexOf(beginTag) + beginTag.length();
+        int firstEnclosingTagIndex = content.indexOf(enclosingTag, beginIndex);
+        int numberOfNestedTags = countNestedTagsIn(content.substring(beginIndex, firstEnclosingTagIndex), tag);
+        int enclosingIndex = getEnclosingTagIndex(content, beginIndex, enclosingTag, numberOfNestedTags);
+        return content.substring(beginIndex, enclosingIndex);
     }
 
-    public List<String> parseTaggedText(String content){
-        List<String> splittedContent = Arrays.asList(content.split("\\n"));
-        List<String> resultText = new ArrayList<>();
-        for (String contentString : splittedContent){
-            List<String> parsedText = getTaggedContent(contentString);
-            if (parsedText.isEmpty()){
-                resultText.add("None");
-            } else {
-                resultText.addAll(parsedText);
-            }
-        }
+    private int getEnclosingTagIndex(String string, int beginIndex, String enclosingTag, int numberOfNestedTags) {
+        int enclosingTagIndex = string.indexOf(enclosingTag, beginIndex);
 
-        return resultText;
-    }
-
-    private String buildBeginTagFrom(String tagString){
-        return "<"+tagString+">";
-    }
-
-    private String buildEnclosingTagFrom(String tagString){
-        return "</"+tagString+">";
-    }
-
-    private String getTaggedText(String content, String beginTag, String enclosingTag){
-        int beginIndex = content.indexOf(beginTag)+beginTag.length();
-        int firstEnclosingTagIndex = content.indexOf(enclosingTag,beginIndex);
-        int numberOfNestedTags = countNestedTagsIn(content.substring(beginIndex,firstEnclosingTagIndex),beginTag);
-        int enclosingIndex = getEnclosingTagIndex(content,beginIndex,enclosingTag,numberOfNestedTags);
-        return content.substring(beginIndex,enclosingIndex);
-    }
-
-    public int getEnclosingTagIndex(String content, int beginIndex, String enclosingTag, int numberOfNestedTags){
-        int enclosingTagIndex = content.indexOf(enclosingTag,beginIndex);
-
-        if (numberOfNestedTags == 0){
-            if (enclosingTagIndex < 0){
+        if (numberOfNestedTags == 0) {
+            if (enclosingTagIndex < 0) {
                 enclosingTagIndex = beginIndex - enclosingTag.length();
             }
             return enclosingTagIndex;
         }
 
-        return getEnclosingTagIndex(content,enclosingTagIndex + enclosingTag.length(),enclosingTag,numberOfNestedTags - 1);
+        return getEnclosingTagIndex(string, enclosingTagIndex + enclosingTag.length(), enclosingTag, numberOfNestedTags - 1);
     }
 
-    private int countNestedTagsIn(String string, String beginTag){
+    private int countNestedTagsIn(String string, Tag tag) {
         int nestedTagsCount = 0;
-        while (string.length() > 0 && hasTags(string)){
-            String nestedTagString = lookupNextTag(string);
-            String nestedTag =  buildBeginTagFrom(nestedTagString);
+        while (string.length() > 0 && hasTags(string)) {
+            Tag nestedTag = lookupNextTag(string);
 
-            if (nestedTag.equals(beginTag)){
-                string = string.substring(string.indexOf(nestedTag) + nestedTag.length());
+            if (nestedTag.equals(tag)) {
+                string = string.substring(string.indexOf(nestedTag.begin()) + tag.begin().length());
                 nestedTagsCount++;
             } else {
-                string = dropInvalidTag(string,nestedTagString);
+                string = dropInvalidTag(string, nestedTag);
             }
         }
+
         return nestedTagsCount;
     }
 
-    private String deleteParsedContent(String string, String content){
-        int fromIndex = string.indexOf(content) + content.length();
+    private String removeParsedTextFrom(String string, String parsedText) {
+        int fromIndex = string.indexOf(parsedText) + parsedText.length();
         return string.substring(fromIndex);
     }
 
-    private String dropInvalidTag(String string, String tagString){
-        String beginTag = buildBeginTagFrom(tagString);
+    private String dropInvalidTag(String string, Tag tag) {
+        String beginTag = tag.begin();
         return string.substring(string.indexOf(beginTag) + beginTag.length());
     }
 
-    private boolean hasTags(String content){
-        return Pattern.compile(".*<.{2,}>.*").matcher(content).matches();
+    private boolean hasTags(String string) {
+        return Pattern.compile(".*<.{2,}>.*").matcher(string).matches();
     }
 
-    private boolean isTagValid(String string, String tagString){
-        String beginTag = buildBeginTagFrom(tagString);
-        String enclosingTag = buildEnclosingTagFrom(tagString);
+    private boolean isTagValid(String string, Tag tag) {
+        String beginTag = tag.begin();
+        String enclosingTag = tag.enclosing();
 
         if (string.contains(enclosingTag) &&
                 (string.indexOf(beginTag) < string.indexOf(enclosingTag)) &&
-                (!tagString.isEmpty())){
+                (!tag.isEmpty())) {
             return true;
         }
 
         return false;
     }
 
-    private String lookupNextTag(String content){
-        int tagStart = content.indexOf("<") + 1;
-        int tagEnd = content.indexOf(">");
+    private Tag lookupNextTag(String string) {
+        int tagStart = string.indexOf("<") + 1;
+        int tagEnd = string.indexOf(">");
         String tagString = "";
 
-        if (tagStart > tagEnd){
-            return lookupNextTag(content.substring(tagStart));
+        if (tagStart > tagEnd) {
+            return lookupNextTag(string.substring(tagStart));
         }
 
-        if (indexInValidRange(tagStart) && indexInValidRange(tagEnd)){
-            tagString = content.substring(tagStart,tagEnd);
+        if (indexInValidRange(tagStart) && indexInValidRange(tagEnd)) {
+            tagString = string.substring(tagStart, tagEnd);
         }
 
-        return tagString;
+        return Tag.of(tagString);
     }
 
-    private boolean indexInValidRange(int index){
+    private boolean indexInValidRange(int index) {
         return index >= 0;
+    }
+
+    public static class Tag {
+        private String tagString;
+
+        private Tag(String tagString) {
+            this.tagString = tagString;
+        }
+
+        public static Tag of(String tagString) {
+            return new Tag(tagString);
+        }
+
+        public String tagText(String text) {
+            return begin() + text + enclosing();
+        }
+
+        public boolean isEmpty() {
+            return tagString.isEmpty();
+        }
+
+        public String begin() {
+            return "<" + tagString + ">";
+        }
+
+        public String enclosing() {
+            return "</" + tagString + ">";
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            Tag tag = (Tag) o;
+            return Objects.equals(tagString, tag.tagString);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(tagString);
+        }
     }
 }
