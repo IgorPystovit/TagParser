@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 public class TagParser {
-    public List<String> getTaggedContent(String string,List<String> resultText){
+    private List<String> getTaggedContent(String string,List<String> resultText){
 
         if (string.length() > 0 && hasTags(string)){
             String tagString = lookupNextTag(string);
@@ -20,7 +20,7 @@ public class TagParser {
                     resultText.add(taggedText);
                 }
 
-                string = deleteParsedContent(string,(beginTag + taggedText + enclosingTag).length());
+                string = deleteParsedContent(string,beginTag + taggedText + enclosingTag);
             } else {
                 string = dropInvalidTag(string,tagString);
             }
@@ -95,8 +95,9 @@ public class TagParser {
         return nestedTagsCount;
     }
 
-    private String deleteParsedContent(String string, int contentLength){
-        return string.substring(contentLength);
+    private String deleteParsedContent(String string, String content){
+        int fromIndex = string.indexOf(content) + content.length();
+        return string.substring(fromIndex);
     }
 
     private String dropInvalidTag(String string, String tagString){
@@ -114,7 +115,7 @@ public class TagParser {
 
         if (string.contains(enclosingTag) &&
                 (string.indexOf(beginTag) < string.indexOf(enclosingTag)) &&
-                (!tagString.isBlank())){
+                (!tagString.isEmpty())){
             return true;
         }
 
